@@ -2,17 +2,16 @@
 namespace Payum\Be2Bill\Action;
 
 use Payum\Be2Bill\Api;
-use Payum\Core\Action\ActionInterface;
+use Payum\Core\Action\PaymentAwareAction;
 use Payum\Core\ApiAwareInterface;
 use Payum\Core\Bridge\Spl\ArrayObject;
-use Payum\Core\Exception\LogicException;
 use Payum\Core\Exception\RequestNotSupportedException;
 use Payum\Core\Exception\UnsupportedApiException;
 use Payum\Core\Request\CaptureRequest;
+use Payum\Core\Request\GetHttpQueryRequest;
 use Payum\Core\Request\PostRedirectUrlInteractiveRequest;
-use Payum\Core\Request\RedirectPostInteractiveRequest;
 
-class CaptureOnsiteAction implements ActionInterface, ApiAwareInterface
+class CaptureOnsiteAction extends PaymentAwareAction implements ApiAwareInterface
 {
     /**
      * @var Api
@@ -20,7 +19,7 @@ class CaptureOnsiteAction implements ActionInterface, ApiAwareInterface
     protected $api;
 
     /**
-     * {@inheritdoc}
+     * {@inheritDoc}
      */
     public function setApi($api)
     {
@@ -32,7 +31,7 @@ class CaptureOnsiteAction implements ActionInterface, ApiAwareInterface
     }
 
     /**
-     * {@inheritdoc}
+     * {@inheritDoc}
      *
      * @throws PostRedirectUrlInteractiveRequest if authorization required.
      */
@@ -45,14 +44,22 @@ class CaptureOnsiteAction implements ActionInterface, ApiAwareInterface
 
         $model = ArrayObject::ensureArrayObject($request->getModel());
 
-        throw new PostRedirectUrlInteractiveRequest(
-            $this->api->getOnsiteUrl(),
-            $this->api->prepareOnsitePayment($model->toUnsafeArray())
-        );
+        $getHttpQuery = new GetHttpQueryRequest();
+        $this->payment->execute($getHttpQuery);
+
+        //we are back from be2bill site so we have to just update model.
+        if (isset($getHttpQuery['EXECCODE'])) {
+            $model->replace($getHttpQuery);
+        } else {
+            throw new PostRedirectUrlInteractiveRequest(
+                $this->api->getOnsiteUrl(),
+                $this->api->prepareOnsitePayment($model->toUnsafeArray())
+            );
+        }
     }
 
     /**
-     * {@inheritdoc}
+     * {@inheritDoc}
      */
     public function supports($request)
     {
@@ -64,6 +71,8 @@ class CaptureOnsiteAction implements ActionInterface, ApiAwareInterface
             return false;
         }
 
-        return false == empty($model['CARDCODE']);
+        $model = $request->getModel();
+
+        return empty($model['CARDCODE']);
     }
 }
